@@ -34,10 +34,6 @@ func load(title string) (*Blog, error) {
 	return &Blog{Title: title, Body: body}, nil
 }
 
-type BlogList struct {
-	Titles []string
-}
-
 func index(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if _, ok := recover().(error); ok {
@@ -54,11 +50,12 @@ func index(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	list := BlogList{Titles: make([]string, 0, len(files))}
+	list := make([]Blog, 0)
 	for i := range files {
 		if !files[i].IsDir() {
 			name := files[i].Name()
-			list.Titles = append(list.Titles, files[i].Name()[:len(name) - len(path.Ext(name))])
+			b := Blog{name[:len(name)-len(path.Ext(name))], nil}
+			list = append(list, b)
 		}
 	}
 	t, _ := template.ParseFiles("index.html")

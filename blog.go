@@ -1,77 +1,78 @@
 package main
 
 import (
-//	"os"
-	"log"
-	"html/template"
-//	"path"
-	"net/http"
-//	"io/ioutil"
 	"encoding/json"
-	"time"
-//	"sort"
-	"strconv"
-//	"bytes"
 	"github.com/simonz05/godis"
+	"html/template"
+	"log"
+	"net/http"
+	"strconv"
+	"time"
 )
 
-
 type BlogEntry struct {
-	Title	string
-	Body	[]byte
-	Date	int64
+	Title string
+	Body  []byte
+	Date  int64
 }
 
 type BlogStruct struct {
-	Name	string
-	Author	string
-	Email	string
-	Entries	[]BlogEntry
+	Name    string
+	Author  string
+	Email   string
+	Entries []BlogEntry
 }
 
 var (
-	client	*godis.Client
-	blog	BlogStruct = BlogStruct{Name:"Stanley's Blog", Author:"stanley", Email:"stanley.w.cai@gmail.com"}
+	client *godis.Client
+	blog   BlogStruct = BlogStruct{Name: "Stanley's Blog", Author: "stanley", Email: "stanley.w.cai@gmail.com"}
 )
 
 const (
 	blogPrefix = "/blog/view/"
 )
 
-func (b *BlogStruct) add(entry BlogEntry) {
-	log.Println("entry %v", entry)
+func (b *BlogStruct) add(entry BlogEntry) error {
 	key := strconv.FormatInt(time.Now().Unix(), 10)
 	value, err := json.Marshal(entry)
-	log.Printf("entry %v value %v\n", entry, value)
+	// log.Printf("entry %v value %v\n", entry, value)
 	if err != nil {
-		// log error msg and return
-		log.Printf("failed to marshal(entry %v)\n", entry)
-		return
+		return err
 	}
 
-	client.Hset("blog", key, value)
+	if ok, err := client.Hset("blog", key, value); !ok && err != nil {
+		return err
+	}
 
 	// TODO This implementation is dirty. Optimize this.
 	// reload all blog entries
-	b.loadAll()
+	return b.loadAll()
 }
 
-func addNewEntries() {
+func (b *BlogStruct) addNewEntries() error {
+	// clean up the database at first
 	client.Flushdb()
 
 	entry := BlogEntry{"hello, world", []byte("hello, go world"), time.Now().Unix()}
-	blog.add(entry)
+	if err := b.add(entry); err != nil {
+		return err
+	}
+
+	// sleep 2 seconds to make sure two different items are added
+	time.Sleep(1 * 1e9)
 	entry = BlogEntry{"hello again", []byte("hello, GO world"), time.Now().Unix()}
-	blog.add(entry)
-	log.Println(blog)
+	if err := b.add(entry); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (b *BlogStruct) loadAll() {
+func (b *BlogStruct) loadAll() error {
 	actual, err := client.Hkeys("blog")
 	if err != nil {
 		// log error msg and return
-		log.Printf("failed to invoke Hkeys(blog) %v\n", actual)
-		return
+		// log.Printf("failed to invoke Hkeys(blog) %v\n", actual)
+		return err
 	}
 
 	keys := make([]int64, len(actual))
@@ -99,12 +100,12 @@ func (b *BlogStruct) loadAll() {
 			// log error message and continue
 			log.Printf("failed to unmarshal JSON %v\n", value)
 		}
-		log.Printf("value %v entry %v", value, b.Entries[i])
 	}
 	// Done
+	return nil
 }
 
-func blogIndex(w http.ResponseWriter, r *http.Request) {
+func blogIndex(w http.ResponseWriter, r *http.Request) error {
 	defer func() {
 		if _, ok := recover().(error); ok {
 			// go error.html
@@ -112,22 +113,31 @@ func blogIndex(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	if blog.Entries == nil {
-		blog.loadAll()
+		if err := blog.loadAll(); err != nil {
+			return err
+		}
 	}
-	t, _ := template.ParseFiles("index.html")
-	t.Execute(w, blog)
+	t, err := template.ParseFiles("index.html")
+	if err != nil {
+		return err
+	}
+	return t.Execute(w, blog)
 }
 
-func viewHandler(w http.ResponseWriter, r *http.Request) {
+func viewBlogEntry(w http.ResponseWriter, r *http.Request) error {
 	id := r.URL.Path[len(blogPrefix):]
 	if blog.Entries == nil {
-		blog.loadAll()
+		if err := blog.loadAll(); err != nil {
+			return err
+		}
 	}
 
 	p, err := strconv.ParseInt(id, 10, 0)
 	if err != nil {
 		p = 0
+		return err
 	}
+
 	var entry BlogEntry
 	for _, e := range blog.Entries {
 		if e.Date == p {
@@ -136,14 +146,25 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	t, _ := template.ParseFiles("view.html")
-	t.Execute(w, entry)
+	t, err := template.ParseFiles("view.html")
+	if err != nil {
+		return err
+	}
+	return t.Execute(w, entry)
+}
+
+type appHandler func(http.ResponseWriter,*http.Request) error
+
+func (fn appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := fn(w, r); err != nil {
+		http.Error(w, err.Error(), 500)
+	}
 }
 
 func main() {
 	client = godis.New("", 0, "")
-	addNewEntries()
-	http.HandleFunc("/blog/", blogIndex)
-	http.HandleFunc("/blog/view/", viewHandler)
+	blog.addNewEntries()
+	http.Handle("/blog/", appHandler(blogIndex))
+	http.Handle("/blog/view/", appHandler(viewBlogEntry))
 	http.ListenAndServe(":8080", nil)
 }

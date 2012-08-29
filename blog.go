@@ -117,7 +117,7 @@ func blogIndex(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 	}
-	t, err := template.ParseFiles("index.html")
+	t, err := template.ParseFiles("template/index.html")
 	if err != nil {
 		return err
 	}
@@ -146,14 +146,14 @@ func viewBlogEntry(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 
-	t, err := template.ParseFiles("view.html")
+	t, err := template.ParseFiles("template/view.html")
 	if err != nil {
 		return err
 	}
 	return t.Execute(w, entry)
 }
 
-type appHandler func(http.ResponseWriter,*http.Request) error
+type appHandler func(http.ResponseWriter, *http.Request) error
 
 func (fn appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := fn(w, r); err != nil {

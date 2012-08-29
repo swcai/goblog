@@ -117,7 +117,7 @@ func blogIndex(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 	}
-	t, err := template.ParseFiles("template/index.html")
+	t, err := template.ParseFiles("template/index.tmpl")
 	if err != nil {
 		return err
 	}
@@ -146,25 +146,44 @@ func viewBlogEntry(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 
-	t, err := template.ParseFiles("template/view.html")
+	t, err := template.ParseFiles("template/view.tmpl")
 	if err != nil {
 		return err
 	}
 	return t.Execute(w, entry)
 }
 
-type appHandler func(http.ResponseWriter, *http.Request) error
+func editBlogEntry(w http.ResponseWriter, r *http.Request) error {
+	http.Error(w, "not implemented", 500)
+	return nil
+}
 
+// A method's receiver is a function. This implementation is confusing
+// changed to a closure.
+/*
 func (fn appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := fn(w, r); err != nil {
 		http.Error(w, err.Error(), 500)
+	}
+}
+*/
+type appHandler func(http.ResponseWriter, *http.Request) error
+
+func ServeHTTP(fn appHandler) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := fn(w, r); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
 	}
 }
 
 func main() {
 	client = godis.New("", 0, "")
 	blog.addNewEntries()
-	http.Handle("/blog/", appHandler(blogIndex))
-	http.Handle("/blog/view/", appHandler(viewBlogEntry))
+	http.Handle("/", http.FileServer(http.Dir("www")))
+	http.Handle("/static", http.FileServer(http.Dir("static")))
+	http.HandleFunc("/blog/", ServeHTTP(blogIndex))
+	http.HandleFunc("/blog/view/", ServeHTTP(viewBlogEntry))
+	http.HandleFunc("/blog/edit/", ServeHTTP(editBlogEntry))
 	http.ListenAndServe(":8080", nil)
 }

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>{{.Name}}</title>
+
+	<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+	<div id="content">
+		<h1><a itemprop="name" href="/blog/">{{.Name}}</a></h1>
+		<div id="main">
+			{{range .Entries}}
+			<div class="post">
+				<div class="content">{{printf "%s" .Body}}</div>
+				<div class="meta">
+					<span class="date">{{.Date}}</span>
+				</div>
+				<hr class="entry" />
+			</div>
+			{{end}} 
+		</div>
+	</div>
+</body>
+</html>
